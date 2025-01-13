@@ -1,1 +1,60 @@
+# Set default location
+$DefaultLocation = "uksouth"
+
+# Function to set text color
+function Write-Color {
+    param (
+        [string]$Message,
+        [string]$Color
+    )
+    $colorMap = @{ "Red" = "DarkRed"; "Green" = "DarkGreen"; "Yellow" = "DarkYellow"; "Cyan" = "Cyan"; "White" = "White" }
+    Write-Host $Message -ForegroundColor $colorMap[$Color]
+}
+
+# Prompt for resource group and VM names
+Write-Color "Enter the name of the resource group where your VM sits:" "Cyan"
+$ResourceGroupName = Read-Host "Resource Group Name"
+
+Write-Color "Enter the name of the VM you would like to monitor:" "Cyan"
+$VMName = Read-Host "VM Name"
+
+# Check if the resource group exists
+$RG = Get-AzResourceGroup -Name $ResourceGroupName -ErrorAction SilentlyContinue
+
+# Check if the resource group exists
+if (-not $RG) {
+    Write-Color "Resource group '$ResourceGroupName' does not exist. Creating a new resource group..." "Yellow"
+    $ResourceGroup = New-AzResourceGroup -Name $ResourceGroupName -Location $DefaultLocation
+    Write-Color "Resource group '$ResourceGroupName' created successfully in location '$DefaultLocation'." "Green"
+} else {
+    Write-Color "Resource group '$ResourceGroupName' already exists." "Green"
+}
+
+# Check if the VM exists
+$VM = Get-AzVM -ResourceGroupName $ResourceGroupName -Name $VMName -ErrorAction SilentlyContinue
+if (-not $VM) {
+    Write-Color "Virtual Machine '$VMName' does not exist in resource group '$ResourceGroupName'. Exiting..." "Red"
+    return
+} else {
+    Write-Color "Virtual Machine '$VMName' found. Proceeding to retrieve metrics..." "Green"
+}
+
+# Retrieve and monitor metrics
+Write-Color "Retrieving metrics for VM '$VMName'..." "Cyan"
+
+$Metrics = @("Percentage CPU", "Disk Read Bytes", "Disk Write Bytes")
+$MetricNamespace = "Microsoft.Compute/virtualMachines"
+
+foreach ($Metric in $Metrics) {
+    Write-Color "Fetching '$Metric'..." "Yellow"
+    $MetricData = Get-AzMetric -ResourceId $VM.Id -MetricName $Metric -TimeGrain 00:01:00 -StartTime (Get-Date).AddMinutes(-10) -EndTime (Get-Date)
+
+    if ($MetricData.Data) {
+        Write-Color "Latest $Metric for VM '$VMName': $($MetricData.Data[-1].Average)" "Green"
+    } else {
+        Write-Color "No data available for metric '$Metric'." "Red"
+    }
+}
+
+Write-Color "Monitoring completed for VM '$VMName'." "Cyan"
 
