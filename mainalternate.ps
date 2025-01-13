@@ -1,0 +1,76 @@
+# Set default location
+$DefaultLocation = "uksouth"
+
+# Function to set text color
+function Write-Color {
+    param (
+        [string]$Message,
+        [string]$Color
+    )
+    $colorMap = @{ "Red" = "DarkRed"; "Green" = "DarkGreen"; "Yellow" = "DarkYellow"; "Cyan" = "Cyan"; "White" = "White" }
+    Write-Host $Message -ForegroundColor $colorMap[$Color]
+}
+
+# Function to retrieve metrics for a VM
+function Get-VM-Metrics {
+    param (
+        [string]$VMId,
+        [string[]]$MetricsToFetch,
+        [datetime]$StartTime,
+        [datetime]$EndTime
+    )
+    foreach ($Metric in $MetricsToFetch) {
+        Write-Color \"Fetching '$Metric'...\" \"Yellow\"
+        $MetricData = Get-AzMetric -ResourceId $VMId -MetricName $Metric -TimeGrain 00:01:00 -StartTime $StartTime -EndTime $EndTime
+
+        if ($MetricData.Data) {
+            Write-Color \"Latest $Metric for VM: $($MetricData.Data[-1].Average)\" \"Green\"
+        } else {
+            Write-Color \"No data available for metric '$Metric'.\" \"Red\"
+        }
+    }
+}
+
+# Prompt for resource group and VM names
+Write-Color "Enter the name of the resource group:" "Cyan"
+$ResourceGroupName = Read-Host "Resource Group Name"
+
+Write-Color "Enter the name of the VM to monitor:" "Cyan"
+$VMName = Read-Host "VM Name"
+
+# Check if the resource group exists
+$RG = Get-AzResourceGroup -Name $ResourceGroupName -ErrorAction SilentlyContinue
+
+if (-not $RG) {
+    Write-Color "Resource group '$ResourceGroupName' does not exist. Creating a new resource group..." "Yellow"
+    $ResourceGroup = New-AzResourceGroup -Name $ResourceGroupName -Location $DefaultLocation
+    Write-Color "Resource group '$ResourceGroupName' created successfully in location '$DefaultLocation'." "Green"
+} else {
+    Write-Color "Resource group '$ResourceGroupName' already exists." "Green"
+}
+
+# Check if the VM exists
+$VM = Get-AzVM -ResourceGroupName $ResourceGroupName -Name $VMName -ErrorAction SilentlyContinue
+if (-not $VM) {
+    Write-Color "Virtual Machine '$VMName' does not exist in resource group '$ResourceGroupName'. Exiting..." "Red"
+    return
+} else {
+    Write-Color "Virtual Machine '$VMName' found. Proceeding to retrieve metrics..." "Green"
+}
+
+# Prompt for time range
+Write-Color "Enter the start time for metrics (e.g., '2025-01-01T00:00:00'):" "Cyan"
+$StartTimeInput = Read-Host "Start Time"
+$StartTime = [datetime]::Parse($StartTimeInput)
+
+Write-Color "Enter the end time for metrics (e.g., '2025-01-01T23:59:59'):" "Cyan"
+$EndTimeInput = Read-Host "End Time"
+$EndTime = [datetime]::Parse($EndTimeInput)
+
+# Metrics to fetch
+$MetricsToFetch = @("Percentage CPU", "Disk Read Bytes", "Disk Write Bytes")
+
+# Call the function to get metrics
+Get-VM-Metrics -VMId $VM.Id -MetricsToFetch $MetricsToFetch -StartTime $StartTime -EndTime $EndTime
+
+Write-Color "Monitoring completed for VM '$VMName'." "Cyan"
